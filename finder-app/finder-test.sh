@@ -5,14 +5,6 @@
 set -e
 set -u
 
-# Clean previous build artifacts
-echo "Removing old build artifacts"
-make clean
-
-# Compile the writer application natively
-echo "Compiling the writer application natively"
-make
-
 NUMFILES=10
 WRITESTR=AELD_IS_FUN
 WRITEDIR=/tmp/aeld-data
