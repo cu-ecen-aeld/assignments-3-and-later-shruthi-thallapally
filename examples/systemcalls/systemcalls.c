@@ -268,7 +268,7 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
             va_end(args);
             return false;
         }
-        if(WIFEXITED(status) )
+        if(WIFEXITED(wait_status) )
         {
             if(WEXITSTATUS(wait_status) == 0)
             {
