@@ -30,6 +30,8 @@
 #include <syslog.h>
 #include <errno.h>
 #include <sys/wait.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 
 /**
@@ -76,14 +78,14 @@ bool do_system(const char *cmd)
                 return true;
             }else
             {
-                syslog(LOG_ERR, "Child process exited with %s status\n", exit_status);
+                syslog(LOG_ERR, "Child process exited with %d status\n", exit_status);
                  return false;
             }
 
-        } else if(WIFSIGNALED(status))
+        } else if(WIFSIGNALED(system_status))
         {
-            exit_status= WTERMSIG(status);
-            syslog(LOG_ERR, "Child process terminated with %s status\n", exit_status);
+            exit_status= WTERMSIG(system_status);
+            syslog(LOG_ERR, "Child process terminated with %d status\n", exit_status);
              return false;
         }else
         {
@@ -149,7 +151,7 @@ bool do_exec(int count, ...)
         va_end(args);
         return false;
     }
-    pid_t pid = fork();
+        pid_t pid = fork();
     if(pid==0)
     {
         execv(command[0],command);
@@ -158,7 +160,7 @@ bool do_exec(int count, ...)
     }
     else if(pid==-1)
     {
-        perror("fork failed")
+        perror("fork failed");
         va_end(args);
         return false;
     }
@@ -171,9 +173,9 @@ bool do_exec(int count, ...)
             va_end(args);
             return false;
         }
-        if(WIFEXITED(status) )
+        if(WIFEXITED(wait_status) )
         {
-            if(WEXITSTATUS(status) == 0)
+            if(WEXITSTATUS(wait_status) == 0)
             {
                 va_end(args);
                 return true;
@@ -253,7 +255,7 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     }
     else if(pid==-1)
     {
-        perror("fork failed")
+        perror("fork failed");
         va_end(args);
         return false;
     }
@@ -268,7 +270,7 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
         }
         if(WIFEXITED(status) )
         {
-            if(WEXITSTATUS(status) == 0)
+            if(WEXITSTATUS(wait_status) == 0)
             {
                 va_end(args);
                 return true;
