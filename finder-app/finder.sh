@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # finder script for assignment 1
 # Author: Shruthi Thallapally
