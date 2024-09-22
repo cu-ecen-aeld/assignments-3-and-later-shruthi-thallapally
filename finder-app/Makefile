@@ -20,6 +20,7 @@ $(TARGET): $(OBJ)
 # Compile object files
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
+	chmod +x writer
 
 # Clean target: remove the binary and object files
 .PHONY: clean
