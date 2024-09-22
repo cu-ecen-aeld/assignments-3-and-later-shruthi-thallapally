@@ -1,18 +1,13 @@
 #references : ECEN5813
 
 # Variables
-CC := gcc
+
 CFLAGS := -Wall -Werror
 TARGET := writer
 SRC := writer.c
 OBJ := $(SRC:.c=.o)
 
-# Check if CROSS_COMPILE is set
-ifeq ($(CROSS_COMPILE),)
-    CC := gcc
-else
-    CC := $(CROSS_COMPILE)gcc
-endif
+
 
 # Default target: Build the writer application
 .PHONY: all
