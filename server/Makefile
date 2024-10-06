@@ -11,11 +11,11 @@ all: $(TARGET)
 
 # Compile the aesdsocket application
 $(TARGET): $(OBJ)
-	$(CC) $(CFLAGS) -D_POSIX_C_SOURCE=200112L -o $(TARGET) $(OBJ)
+	$(CC) $(CFLAGS) -o $(TARGET) $(OBJ)
 
 # Compile object files
 %.o: %.c
-	$(CC) $(CFLAGS) -D_POSIX_C_SOURCE=200112L -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 
 # Clean target: remove the binary and object files
 .PHONY: clean

@@ -13,7 +13,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
-#define _POSIX_C_SOURCE 200112L  // Enable 2001 version of POSIX features
+
 
 #define PORT_NUM (9000)
 #define BACKLOG (10)
@@ -22,7 +22,7 @@
 
 int sockfd,fd;
 struct addrinfo *res;
-volatile sig_atomic_t caught_sig;
+volatile sig_atomic_t caught_sig=0;
 char client_ip[INET_ADDRSTRLEN];
 FILE *temp_file=NULL;
 
@@ -44,6 +44,12 @@ bool daemon_mode()
       exit(0);  //exiting parent process
    }
    
+   if (setsid() == -1)
+    {
+        syslog(LOG_ERR, "Failed to create a new session");
+        return status;
+    }
+
    if((ret_childdir =chdir("/"))==-1)
    {
         syslog(LOG_ERR,"failed to change directory");
@@ -77,7 +83,7 @@ bool daemon_mode()
     close(file);
     return status;
 }
-   
+ 
 static void signal_handler(int signal)
 {
 	caught_sig=signal;
@@ -114,12 +120,15 @@ void mem_clean()
       closelog();
 }	
 
+  
+
+
 int main(int argc, char **argv)
 {
     openlog("aesdsocket_log",LOG_PID|LOG_CONS,LOG_USER);
     bool in_daemon_mode = false;
     
-    if(strcmp(argv[1],"-d") && (argc >=2) == 0)
+    if((argc >=2) && strcmp(argv[1],"-d") == 0)
     {
     	in_daemon_mode = true;
     }
@@ -148,6 +157,12 @@ int main(int argc, char **argv)
         exit(1);
     }
     
+     // Set socket options to allow reuse of address
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) != 0) {
+        syslog(LOG_ERR, "setsockopt() failed");
+        mem_clean();
+        exit(1);
+    }
     if (bind(sockfd, res->ai_addr, res->ai_addrlen) == -1) 
     {
         syslog(LOG_ERR, "bind() failed");
