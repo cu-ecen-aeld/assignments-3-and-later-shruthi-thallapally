@@ -264,7 +264,6 @@ int main(int argc, char **argv)
         }
         
         free(buffer);
-        
         fseek(temp_file,0,SEEK_SET);
         size_t tx_buff_size=size;
         char *tx_buff=(char *)malloc(tx_buff_size);
