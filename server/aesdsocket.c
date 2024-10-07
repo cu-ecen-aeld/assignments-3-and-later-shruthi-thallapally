@@ -22,7 +22,7 @@
 
 int sockfd,fd;
 struct addrinfo *res;
-volatile sig_atomic_t caught_sig=0;
+bool caught_sig=false;
 char client_ip[INET_ADDRSTRLEN];
 FILE *temp_file=NULL;
 
@@ -53,6 +53,7 @@ bool daemon_mode()
    if((ret_childdir =chdir("/"))==-1)
    {
         syslog(LOG_ERR,"failed to change directory");
+        return status;
    }
    
    if((file=open("/dev/null",O_RDWR))==-1)
@@ -64,16 +65,22 @@ bool daemon_mode()
    if((ret_stdin=dup2(file,STDIN_FILENO))==-1)
    {
    	syslog(LOG_ERR,"failed to redirect stdin");
+   	close(file);
+   	return status;
    }
    
    if((ret_stdout=dup2(file,STDOUT_FILENO))==-1)
    {
    	syslog(LOG_ERR,"failed to redirect stdout");
+   	close(file);
+   	return status;
    } 
    
    if((ret_stderr=dup2(file,STDERR_FILENO))==-1)
    {
    	syslog(LOG_ERR,"failed to redirect stderr");
+   	close(file);
+   	return status;
    }
    
     if ((ret_childdir != -1) && (ret_stdin != -1) && (ret_stdout != -1) && (ret_stderr != -1))
@@ -86,41 +93,112 @@ bool daemon_mode()
  
 static void signal_handler(int signal)
 {
-	caught_sig=signal;
+	if(signal==SIGINT || signal == SIGTERM)
+	{
+		syslog(LOG_INFO,"caught signal, exiting gracefully\n");
+	}
+	caught_sig=true;
 }
 
-void mem_clean()
+void init_sigaction()
 {
+    struct sigaction action;
+     
+    action.sa_handler = signal_handler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = 0; 
+    if (sigaction(SIGTERM, &action, NULL) != 0)
+    {
+        syslog(LOG_ERR, "SIGTERM failed");
+    }
 
-      if(sockfd !=-1)
-      {
-      	shutdown(sockfd,SHUT_RDWR);
-      	close(sockfd);
-      }	
-      
-      if(res != NULL)
-      {
-      	freeaddrinfo(res);
-      }
-      
-      if(temp_file != NULL)
-      {
-      	fclose(temp_file);
-      	temp_file = NULL;
-      	remove("/var/tmp/aesdsocketdata");
-      }	
-      	
-      if(fd !=-1)
-      {
-      	shutdown(fd,SHUT_RDWR);
-      	close(fd);
-      	syslog(LOG_DEBUG,"closed connection from %s",client_ip);
-      }	
-      	
-      closelog();
-}	
+    if (sigaction(SIGINT, &action, NULL))
+    {
+        syslog(LOG_ERR, "SIGINT failed");
+    }
 
-  
+}
+int send_to_client(int fd,int data_fd)
+{
+	char *send_buff;
+	send_buff = (char *)malloc(BUFFER_SIZE);
+	size_t bytes_read;
+	lseek(data_fd,0,SEEK_SET);
+	if(send_buff==NULL)
+	{
+		syslog(LOG_ERR,"malloc failed while sending to client");
+		return -1;
+	}	
+	
+	while((bytes_read=read(data_fd,send_buff,sizeof(send_buff)-1))>0)
+	{
+	send_buff[bytes_read]='\0';
+	if(send(fd,send_buff,bytes_read,0)==-1)
+	{
+		syslog(LOG_ERR,"sending data to client failed");
+		break;
+	}
+	}
+	free(send_buff);
+	return 0;
+	
+}
+int rx_socket_data(int fd,int data_fd)
+{
+	size_t mul_factor=1;
+	size_t buff_size = BUFFER_SIZE;
+	size_t total_rx=0;
+	char *buff=NULL;
+	
+	buff=(char *)malloc(buff_size*sizeof(char));
+	if(buff==NULL)
+	{
+		syslog(LOG_ERR,"malloc failed");
+		return -1;
+	}
+	while(1)
+	{
+		ssize_t rx_bytes=recv(fd,buff+total_rx,buff_size-total_rx-1,0);
+		if(rx_bytes<=0)
+		{
+			break;
+		}
+		total_rx+=rx_bytes;
+		buff[total_rx]='\0';
+		
+		if(strchr(buff,'\n')!=NULL)
+		{
+			break;
+		}
+		
+		mul_factor<<=1;
+		size_t new_buff_size=mul_factor*BUFFER_SIZE;
+		char * new_buff=(char *)realloc(buff,new_buff_size);
+		if(new_buff==NULL)
+		{
+			syslog(LOG_ERR,"realloc failed");
+			free(buff);
+			return -1;
+		}
+		buff=new_buff;
+		buff_size=new_buff_size;
+	}
+	
+	if(write(data_fd,buff,total_rx)!=-1)
+	{
+		fdatasync(data_fd);
+	}
+	else
+	{
+		syslog(LOG_ERR,"writing received data into file failed");
+		free(buff);
+		return -1;
+	}
+	
+	free(buff);
+	return 0;
+	
+}
 
 
 int main(int argc, char **argv)
@@ -136,7 +214,8 @@ int main(int argc, char **argv)
     socklen_t addr_len;
     struct addrinfo hints;
     struct sockaddr_storage addr;
-    int flag;
+    int flag,data_fd;
+    int yes=1;
     
     memset(&hints,0,sizeof(hints)); //empty the struct
     hints.ai_flags=AI_PASSIVE;
@@ -146,27 +225,30 @@ int main(int argc, char **argv)
     if((flag=getaddrinfo(NULL,"9000",&hints,&res))!=0)
     {
     	syslog(LOG_ERR,"failed to get socket address");
-    	mem_clean();
+    	closelog();
     	exit(1);
     }
     
     if ((sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) == -1)
     {
         syslog(LOG_ERR, "socket() failed");
-        mem_clean();
+        closelog();
+        freeaddrinfo(res);
         exit(1);
     }
     
      // Set socket options to allow reuse of address
     if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) != 0) {
         syslog(LOG_ERR, "setsockopt() failed");
-        mem_clean();
+        closelog();
+        freeaddrinfo(res);
         exit(1);
     }
     if (bind(sockfd, res->ai_addr, res->ai_addrlen) == -1) 
     {
         syslog(LOG_ERR, "bind() failed");
-        mem_clean();
+        closelog();
+        freeaddrinfo(res);
         exit(1);
     }
     
@@ -175,7 +257,9 @@ int main(int argc, char **argv)
     	bool daemon_status = daemon_mode();
     	if(daemon_status ==false)
     	{
-    	    mem_clean();
+    	    syslog(LOG_ERR,"daemon creation failed");
+    	    closelog();
+            freeaddrinfo(res);
     	    exit(1);
     	 }
     }
@@ -183,131 +267,50 @@ int main(int argc, char **argv)
     if (listen(sockfd, BACKLOG) == -1)
     {
         syslog(LOG_ERR, "Listen failed");
-        mem_clean();
+        closelog();
+        freeaddrinfo(res);
         exit(1);
     }
     
-    temp_file = fopen("/var/tmp/aesdsocketdata", "w+");
-    if(temp_file ==NULL)
+    data_fd = open("/var/tmp/aesdsocketdata",  O_RDWR |O_CREAT | O_TRUNC,0666);
+    if(data_fd ==-1)
     {
     	syslog(LOG_ERR,"/var/tmp/aesdsocketdata file failed to open");
-    	mem_clean();
+    	closelog();
+        freeaddrinfo(res);
     	exit(1);
     }
     
-    struct sigaction action;
-    memset(&action,0,sizeof(struct sigaction));
-    action.sa_handler = signal_handler;
-    if (sigaction(SIGTERM, &action, NULL) != 0)
-    {
-        syslog(LOG_ERR, "SIGTERM failed");
-    }
-
-    if (sigaction(SIGINT, &action, NULL))
-    {
-        syslog(LOG_ERR, "SIGINT failed");
-    }
-
+    init_sigaction();
+    addr_len=sizeof(addr);
     while (!caught_sig)
     {
-        addr_len = sizeof addr;
+        
         fd = accept(sockfd, (struct sockaddr *)&addr, &addr_len);
         if (fd == -1)
         {
             syslog(LOG_ERR, "accept() failed: %s", strerror(errno));
-            mem_clean();
-            exit(1);
+            continue;
         }
     	inet_ntop(addr.ss_family, &(((struct sockaddr_in*)&addr)->sin_addr), client_ip, sizeof(client_ip));
         syslog(LOG_DEBUG, "accept() successful from %s", client_ip);
         
-        size_t rx_buff_size = BUFFER_SIZE;
-        char *buffer = (char *)malloc(rx_buff_size);
-        memset(buffer,0,BUFFER_SIZE);
-        if(buffer==NULL)
+        if(rx_socket_data(fd,data_fd)==0)
         {
-        	syslog(LOG_ERR,"malloc() failed for rx buffer");
-        	close(fd);
-        	continue;
+        	send_to_client(fd,data_fd);
+        }
+        if(close(fd)==-1)
+        {
+        	syslog(LOG_ERR,"closing connection failed");
         }
         
-        size_t rx=0, size=0;
-        int len;
-        char *end_packet=NULL;
-        
-        do
-        {
-        	static int count=0;
-        	
-        	if((count!=0)&&(rx+1>=rx_buff_size))
-        	{
-        		rx_buff_size +=rx_buff_size;
-        		char *resized_buff=(char *)realloc(buffer,rx_buff_size);
-        		if(resized_buff==NULL)
-        		{
-        			syslog(LOG_ERR,"realloc() failed");
-        			free(buffer);
-        			close(fd);
-        			continue;
-        		}
-        		memset(resized_buff+rx,0,rx_buff_size-rx);
-        		buffer=resized_buff;
-        	}
-        	len=recv(fd,buffer+rx,rx_buff_size-rx-1,0);
-        	if(len==-1)
-        	{
-        		syslog(LOG_ERR,"recv() failed");
-        		free(buffer);
-        		close(fd);
-        		continue;
-        	}
-        	rx +=len;
-        	end_packet=strchr(buffer,'\n');
-        	count++;
-        }while((len>0) && (end_packet==NULL));
-        
-        if(end_packet !=NULL)
-        {
-        	size=end_packet-buffer+1;
-        	buffer[size]='\0';
-        	fwrite(buffer,sizeof(char),size,temp_file);
-        	fflush(temp_file);
-        }
-        else
-        {
-        	syslog(LOG_ERR,"no newline received\n");
-        }
-        
-        free(buffer);
-        fseek(temp_file,0,SEEK_SET);
-        size_t tx_buff_size=size;
-        char *tx_buff=(char *)malloc(tx_buff_size);
-        if(tx_buff==NULL)
-        {
-        	syslog(LOG_ERR,"malloc() failed for tx");
-        	close(fd);
-        	continue;
-        }
-        
-        while(fgets(tx_buff,tx_buff_size,temp_file)!=NULL)
-        {
-        	if(send(fd,tx_buff,strlen(tx_buff),0)==-1)
-        	{
-        		syslog(LOG_ERR,"send() failed");
-        		break;
-        	}
-        }
-        
-        free(tx_buff);
-        close(fd);
-        syslog(LOG_DEBUG,"closed connection from client");
      }
      
-     mem_clean();
+     freeaddrinfo(res);
+     close(data_fd);
      closelog();
 }		
 
     
     
       
-
