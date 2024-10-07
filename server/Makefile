@@ -1,24 +1,11 @@
-# Variables
+CC = $(CROSS_COMPILE)gcc
 
-CFLAGS := -Wall -Werror
-TARGET := aesdsocket
-SRC := aesdsocket.c
-OBJ := $(SRC:.c=.o)
+CFLAGS = -Werror -Wall
 
-# Default target: Build the aesdsocket application
-.PHONY: all
-all: $(TARGET)
+all: aesdsocket
 
-# Compile the aesdsocket application
-$(TARGET): $(OBJ)
-	$(CC) $(CFLAGS) -o $(TARGET) $(OBJ)
+aesdsocket: aesdsocket.c
+	$(CC) $(CFLAGS) -o aesdsocket aesdsocket.c
 
-# Compile object files
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
-
-# Clean target: remove the binary and object files
-.PHONY: clean
 clean:
-	rm -f $(TARGET) $(OBJ)
-
+	rm -f aesdsocket
