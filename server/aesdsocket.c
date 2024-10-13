@@ -1,6 +1,7 @@
 /* references:https://blog.taborkelly.net/programming/c/2016/01/09/sys-queue-example.html
 	https://man.freebsd.org/cgi/man.cgi?query=SLIST_ENTRY
 */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -115,7 +116,7 @@ bool daemon_mode()
    int file;
    pid_t pid=fork();
    bool status=false;
-  // int ret_stdin,ret_stdout,ret_stderr,ret_childdir;
+  
    
    if(pid==-1)
    {
@@ -281,8 +282,6 @@ void *thread_function(void *arg)
     struct sockaddr_storage client_addr = thread_args->addr;
     char client_ip[INET_ADDRSTRLEN];
    
-   
-
     // Convert client address to string
     if (client_addr.ss_family == AF_INET)
     {
@@ -331,7 +330,7 @@ int main(int argc, char **argv)
     struct addrinfo hints;
     struct sockaddr_storage client_addr;
     int flag,data_fd;
-  //  int yes=1;
+
     
     memset(&hints,0,sizeof(hints)); //empty the struct
     hints.ai_flags=AI_PASSIVE;
