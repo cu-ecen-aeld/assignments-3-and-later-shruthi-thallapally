@@ -12,11 +12,12 @@ TARGET=aesdsocket
 OBJS = $(SRC:.c=.o)
 SRC  = aesdsocket.c
 CFLAGS = -Werror -Wall -Wunused -Wunused-variable -Wextra
+LFLAGS = -lpthread
 
 all:$(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS)
+	$(CC) $(CFLAGS) $(LFLAGS) -o $(TARGET) $(OBJS)
 
 %.o: %.c
 	$(CC) -c $< -o $@
