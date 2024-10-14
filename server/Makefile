@@ -1,23 +1,19 @@
-ifdef CROSS_COMPILE
-ifeq ($(CROSS_COMPILE),aarch64-none-linux-gnu-)
-CC = $(CROSS_COMPILE)gcc
-else
-CC = gcc
-endif
-endif
+
+CC ?= $(CROSS_COMPILE)gcc
+
 
 #Target executable aesdsocket utility
-TARGET=aesdsocket
+TARGET?=aesdsocket
 
 OBJS = $(SRC:.c=.o)
 SRC  = aesdsocket.c
-CFLAGS = -Werror -Wall -Wunused -Wunused-variable -Wextra
-LFLAGS = -lpthread
+CFLAGS ?= -Werror -Wall -Wunused -Wunused-variable -Wextra
+LDFLAGS ?= -lpthread -lrt
 
 all:$(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) $(LFLAGS) -o $(TARGET) $(OBJS)
+	$(CC) $(CFLAGS) $(LDFLAGS) $(INCLUDES) -o $(TARGET) $(OBJS)
 
 %.o: %.c
 	$(CC) -c $< -o $@
