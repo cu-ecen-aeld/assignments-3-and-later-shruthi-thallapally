@@ -314,7 +314,7 @@ void *thread_function(void *arg)
     	syslog(LOG_ERR,"Connection closing failed from %s",client_ip);
     }
     free(thread_args); // Free the memory allocated for thread arguments
-    pthread_exit(NULL);
+  //  pthread_exit(NULL);
 }
 int main(int argc, char **argv)
 {
