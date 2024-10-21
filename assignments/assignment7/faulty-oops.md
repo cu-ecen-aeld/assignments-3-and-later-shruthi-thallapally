@@ -48,6 +48,26 @@ Call trace:
 Code: d2800001 d2800000 d503233f d50323bf (b900003f) 
 ---[ end trace 0000000000000000 ]---
 ```
+#### Disassembly output:
+```
+student@ecen5713-vm1-shth2398:~/Documents/AESD/assignment-5-shruthi-thallapally$ buildroot/output/host/bin/aarch64-linux-objdump -S ./buildroot/output/build/ldd-3ca2f0a785b01a7a4039fe9f65d021ef1d129d23/misc-modules/faulty.ko
+
+./buildroot/output/build/ldd-3ca2f0a785b01a7a4039fe9f65d021ef1d129d23/misc-modules/faulty.ko:     file format elf64-littleaarch64
+
+
+Disassembly of section .text:
+
+0000000000000000 <faulty_write>:
+   0:	d2800001 	mov	x1, #0x0                   	// #0
+   4:	d2800000 	mov	x0, #0x0                   	// #0
+   8:	d503233f 	paciasp
+   c:	d50323bf 	autiasp
+  10:	b900003f 	str	wzr, [x1]
+  14:	d65f03c0 	ret
+  18:	d503201f 	nop
+  1c:	d503201f 	nop
+
+```
 1. **Process Information**:  
    The error occurred during the execution of the process with PID `153`, which was identified as `sh`. This indicates that a shell process was attempting to write to `/dev/faulty`, which triggered the OOPS.
 
