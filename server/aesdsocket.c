@@ -405,10 +405,10 @@ int main(int argc, char **argv)
         exit(1);
     }
     
-    data_fd = open("/var/tmp/aesdsocketdata",  O_RDWR |O_CREAT | O_TRUNC,0666);
+    data_fd = open("/dev/aesdchar",  O_RDWR |O_CREAT | O_TRUNC,0666);
     if(data_fd ==-1)
     {
-    	syslog(LOG_ERR,"/var/tmp/aesdsocketdata file failed to open");
+    	syslog(LOG_ERR,"/dev/aesdchar file failed to open");
     	closelog();
         freeaddrinfo(res);
     	exit(1);
