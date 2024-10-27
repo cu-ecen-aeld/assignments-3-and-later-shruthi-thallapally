@@ -20,6 +20,8 @@
 #include <linux/slab.h>    // for kmalloc and kfree
 #include <linux/uaccess.h> // for copy_to_user and copy_from_user
 #include <linux/mutex.h>
+#include <stdint.h>
+
 #include "aesdchar.h"
 #include "aesd-circular-buffer.c"
 
@@ -34,10 +36,8 @@ struct aesd_dev aesd_device;
 int aesd_open(struct inode *inode, struct file *filp)
 {
     PDEBUG("open");
-    /**
-     * TODO: handle open
-     */
-    struct aesd_dev *dev ;
+   
+    struct aesd_dev *dev=NULL;
     dev= container_of(inode->i_cdev, struct aesd_dev, cdev);
     filp->private_data = dev; // Store device pointer in file’s private data
     return 0;
@@ -66,7 +66,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
         retval=-EINVAL;
         goto out;
     }
-     struct aesd_dev *dev ;
+     struct aesd_dev *dev=NULL ;
      dev= filp->private_data;
      PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
     
@@ -105,7 +105,8 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 {
     ssize_t retval = -ENOMEM;
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);   
-    char *write_buffer, *nwline_ptr;
+    char *write_buffer=NULL
+    char *nwline_ptr=NULL;
    size_t buff_size=0,new_size=0;
     if (filp == NULL || buf == NULL || f_pos == NULL || count <= 0 || *f_pos<0)
     {
@@ -131,8 +132,8 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         retval= -EINVAL;
         goto free_out;
     }
-    
-    if(nwline_ptr=memchr(write_buffer,'\n',count))
+    nwline_ptr=memchr(write_buffer,'\n',count);
+    if(nwline_ptr!=NULL)
     {
     buff_size=nwline_ptr-write_buffer+1;
     }
@@ -143,9 +144,9 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     }
     if(buff_size>0)
     {
-     dev->entry=writer_buffer;
+     dev->entry=write_buffer;
      dev->entry.size=buff_size;
-     struct aesd_buffer_entry *entry ;
+     struct aesd_buffer_entry *entry=NULL ;
      entry= aesd_circular_buffer_add_entry(&dev->buffer, &dev->entry);
      if(entry!=NULL)
      {
@@ -159,7 +160,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     else
     {
     new_size=dev->entry.size+count;
-    char *temp_ptr;
+    char *temp_ptr=NULL;
     temp_ptr=krealloc(dev->entry.buffptr,new_size,GFP_KERNEL);
     if(temp_ptr==NULL)
     {
@@ -220,7 +221,7 @@ int aesd_init_module(void)
      * TODO: initialize the AESD specific portion of the device
      */
      mutex_init(&aesd_device.lock);
-    aesd_circular_buffer_init(&aesd_device.circular_buffer);
+    aesd_circular_buffer_init(&aesd_device.buffer);
 
     result = aesd_setup_cdev(&aesd_device);
 
