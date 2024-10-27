@@ -105,7 +105,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 {
     ssize_t retval = -ENOMEM;
     struct aesd_dev *dev ; 
-    struct aesd_buffer_entry *entry;
+  //  struct aesd_buffer_entry *entry;
     char *write_buffer=NULL;
     char *nwline_ptr=NULL;
     char *temp_ptr=NULL;
