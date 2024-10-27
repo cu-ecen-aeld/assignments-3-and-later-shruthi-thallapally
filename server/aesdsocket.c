@@ -161,10 +161,6 @@ bool daemon_mode()
  
 static void signal_handler(int signal)
 {
-	if(signal==SIGINT || signal == SIGTERM)
-	{
-		syslog(LOG_INFO,"caught signal, exiting gracefully\n");
-	}
 	caught_sig=true;
 }
 
@@ -257,18 +253,18 @@ int rx_socket_data(int fd,int data_fd)
 	pthread_mutex_lock(&file_mutex);
 	if(write(data_fd,buff,total_rx)!=-1)
 	{
-		pthread_mutex_unlock(&file_mutex); // Unlock before syncing the file
+		pthread_mutex_unlock(&file_mutex); // Unlock after writing and before syncing the file
 		fdatasync(data_fd);
 	}
 	else
 	{
 		syslog(LOG_ERR,"writing received data into file failed");
 		free(buff);
-		pthread_mutex_unlock(&file_mutex);
+		pthread_mutex_unlock(&file_mutex); // Unlock in case of failure
 		
 		return -1;
 	}
-	pthread_mutex_unlock(&file_mutex);
+	
 	free(buff);
 	return 0;
 	
@@ -316,6 +312,28 @@ void *thread_function(void *arg)
     free(thread_args); // Free the memory allocated for thread arguments
   //  pthread_exit(NULL);
 }
+
+// Function to clean up any completed threads
+void clean_up_completed_threads()
+{
+    pthread_mutex_lock(&thread_list_mutex);
+    thread_node *current = SLIST_FIRST(&thread_head);
+    thread_node *next_node;
+
+    while (current != NULL)
+    {
+        next_node = SLIST_NEXT(current, entry);
+        if (pthread_tryjoin_np(current->thread_id, NULL) == 0) // Try to join without blocking
+        {
+            syslog(LOG_INFO, "Thread %ld joined successfully", current->thread_id);
+            SLIST_REMOVE(&thread_head, current, thread_node, entry);
+            free(current);
+        }
+        current = next_node;
+    }
+    pthread_mutex_unlock(&thread_list_mutex);
+}
+
 int main(int argc, char **argv)
 {
     openlog("aesdsocket_log",LOG_PID|LOG_CONS,LOG_USER);
@@ -443,9 +461,32 @@ int main(int argc, char **argv)
     		continue;
     	}
     	add_new_thread_node(thread_id);
+    	 clean_up_completed_threads();
         
      }
      wait_for_all_threads_to_join();
+     if(close(sockfd)!=0)
+    {
+    	syslog(LOG_ERR,"closing server socket failed:%s",strerror(errno));
+    }
+    else
+    {
+    	syslog(LOG_INFO,"server socket closed");
+    }
+    
+    if(close(data_fd)!=0)
+    {
+    	syslog(LOG_ERR,"closing data socket failed:%s",strerror(errno));
+    }
+    else
+    {
+    	syslog(LOG_INFO,"data socket closed");
+    }
+    
+    if(pthread_join(timer_thread, NULL) != 0)
+    {
+        syslog(LOG_ERR,"timer thread join failed:%s",strerror(errno));
+    }
      freeaddrinfo(res);
      close(data_fd);
      closelog();
