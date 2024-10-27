@@ -37,8 +37,7 @@ int aesd_open(struct inode *inode, struct file *filp)
 {
     PDEBUG("open");
    
-    struct aesd_dev *dev=NULL;
-    dev= container_of(inode->i_cdev, struct aesd_dev, cdev);
+    struct aesd_dev *dev = container_of(inode->i_cdev, struct aesd_dev, cdev);
     filp->private_data = dev; // Store device pointer in file’s private data
     return 0;
 }
@@ -66,7 +65,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
         retval=-EINVAL;
         goto out;
     }
-     struct aesd_dev *dev=NULL ;
+     struct aesd_dev *dev ;
      dev= filp->private_data;
      PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
     
@@ -105,8 +104,9 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 {
     ssize_t retval = -ENOMEM;
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);   
-    char *write_buffer=NULL
+    char *write_buffer=NULL;
     char *nwline_ptr=NULL;
+    char *temp_ptr=NULL;
    size_t buff_size=0,new_size=0;
     if (filp == NULL || buf == NULL || f_pos == NULL || count <= 0 || *f_pos<0)
     {
@@ -129,14 +129,12 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 	}
     if (copy_from_user(write_buffer, buf, count)) { // Copy data from user space
         
-        retval= -EINVAL;
+        retval= -EFAULT;
         goto free_out;
     }
     nwline_ptr=memchr(write_buffer,'\n',count);
-    if(nwline_ptr!=NULL)
-    {
-    buff_size=nwline_ptr-write_buffer+1;
-    }
+    buff_size = nwline_ptr ? nwline_ptr - write_buffer + 1 : 0;
+
      if(mutex_lock_interruptible(&dev->lock))
     {
     	retval=-EINTR;
@@ -146,8 +144,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     {
      dev->entry=write_buffer;
      dev->entry.size=buff_size;
-     struct aesd_buffer_entry *entry=NULL ;
-     entry= aesd_circular_buffer_add_entry(&dev->buffer, &dev->entry);
+     struct aesd_buffer_entry *entry=aesd_circular_buffer_add_entry(&dev->buffer, &dev->entry);
      if(entry!=NULL)
      {
      kfree(entry);
@@ -160,7 +157,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     else
     {
     new_size=dev->entry.size+count;
-    char *temp_ptr=NULL;
+    
     temp_ptr=krealloc(dev->entry.buffptr,new_size,GFP_KERNEL);
     if(temp_ptr==NULL)
     {
