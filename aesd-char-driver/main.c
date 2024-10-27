@@ -37,7 +37,8 @@ int aesd_open(struct inode *inode, struct file *filp)
     /**
      * TODO: handle open
      */
-    struct aesd_dev *dev = container_of(inode->i_cdev, struct aesd_dev, cdev);
+    struct aesd_dev *dev ;
+    dev= container_of(inode->i_cdev, struct aesd_dev, cdev);
     filp->private_data = dev; // Store device pointer in file’s private data
     return 0;
 }
@@ -62,10 +63,11 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     size_t bytes_to_read;
     if (filp == NULL || buf == NULL || f_pos == NULL || *f_pos < 0)
     {
-        retval=-INVAL;
+        retval=-EINVAL;
         goto out;
     }
-     struct aesd_dev *dev = filp->private_data;
+     struct aesd_dev *dev ;
+     dev= filp->private_data;
      PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
     
     if(mutex_lock_interruptible(&dev->lock)!=0)
@@ -77,7 +79,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     /**
      * TODO: handle read
      */
-     entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->circular_buffer, *f_pos, &entry_offset);
+     entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->buffer, *f_pos, &entry_offset);
     if (!entry) {
         retval = -EINVAL; // No more data to read
         goto unlock_out;
@@ -103,15 +105,16 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 {
     ssize_t retval = -ENOMEM;
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);   
-    char *write_buffer=NULL, *nwline_ptr=NULL;
+    char *write_buffer, *nwline_ptr;
    size_t buff_size=0,new_size=0;
     if (filp == NULL || buf == NULL || f_pos == NULL || count <= 0 || *f_pos<0)
     {
         retval = -EINVAL;
         goto out;
     }
-    struct aesd_dev *dev = filp->private_data;
-    if(dev = NULL)
+    struct aesd_dev *dev ;
+    dev= filp->private_data;
+    if(dev == NULL)
     {
     	retval= -EPERM;
     	goto out;
@@ -129,7 +132,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         goto free_out;
     }
     
-    if(nwline_ptr=memchr(writer_buffer,'\n',count))
+    if(nwline_ptr=memchr(write_buffer,'\n',count))
     {
     buff_size=nwline_ptr-write_buffer+1;
     }
@@ -142,7 +145,8 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     {
      dev->entry=writer_buffer;
      dev->entry.size=buff_size;
-     struct aesd_buffer_entry *entry = aesd_circular_buffer_add_entry(&dev->buffer, &dev->entry);
+     struct aesd_buffer_entry *entry ;
+     entry= aesd_circular_buffer_add_entry(&dev->buffer, &dev->entry);
      if(entry!=NULL)
      {
      kfree(entry);
@@ -155,22 +159,19 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     else
     {
     new_size=dev->entry.size+count;
-    char *temp_ptr=krealloc9dev->entry.buffptr,new_size,GFP_KERNEL);
+    char *temp_ptr;
+    temp_ptr=krealloc(dev->entry.buffptr,new_size,GFP_KERNEL);
     if(temp_ptr==NULL)
     {
     	retval=-ENOMEM;
-    	goto free_out;
+    	goto unlock_out;
     }
     dev->entry.buffptr=temp_ptr;
-    memcpy(dev->entry.buffptr+dev->entry.size,writer_buffer,count);
+    memcpy((dev->entry.buffptr+dev->entry.size),writer_buffer,count);
     dev->entry.size+=count;
     retval=count;
     }
     
-   
-    
-  
-
 unlock_out:
     mutex_unlock(&dev->lock);
 free_out:
