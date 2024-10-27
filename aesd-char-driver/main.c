@@ -81,7 +81,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
      */
      entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->buffer, *f_pos, &entry_offset);
     if (!entry) {
-        retval = -EINVAL; // No more data to read
+        retval = 0; // No more data to read
         goto unlock_out;
     }
     
@@ -120,7 +120,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     dev= filp->private_data;
     if(dev == NULL)
     {
-    	retval= -EPERM;
+    	retval= -EINVAL;
     	goto out;
     }
    
@@ -140,36 +140,44 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
      if(mutex_lock_interruptible(&dev->lock))
     {
-    	retval=-EINTR;
+    	retval=-ERESTART;
     	goto free_out;
     }
     if(buff_size>0)
     {
-     dev->entry.buffptr=write_buffer;
-     dev->entry.size=buff_size;
-   aesd_circular_buffer_add_entry(&dev->buffer, &dev->entry);
+    
+     dev->entry.buffptr=krealloc(dev->entry.buffptr, dev->entry.size + buff_size, GFP_KERNEL);
      
- 	dev->entry.buffptr = NULL;
+     if (dev->entry.buffptr == NULL) 
+     {
+            PDEBUG("Error: Reallocation failed\n");
+            retval = -ENOMEM;
+            goto unlock_out;
+           }
+ 	 memcpy(dev->entry.buffptr + dev->entry.size, write_buffer, buff_size);
+        dev->entry.size += buff_size;
+        const char *ret_ptr = aesd_circular_buffer_add_entry(&dev->buffer, &dev->entry);
+        if (ret_ptr) {
+            kfree(ret_ptr);
+        }
         dev->entry.size = 0;
-        retval=buff_size;
+        dev->entry.buffptr = NULL;
             
     }
     else
     {
-    new_size=dev->entry.size+count;
-    
-    temp_ptr=krealloc(dev->entry.buffptr,new_size,GFP_KERNEL);
-    if(temp_ptr==NULL)
-    {
-    	retval=-ENOMEM;
+     dev->entry.buffptr = krealloc(dev->entry.buffptr, dev->entry.size + count, GFP_KERNEL);
+        if (dev->entry.buffptr == NULL) {
+            PDEBUG("Error: Reallocation failed\n");
+            retval = -ENOMEM;
     	goto unlock_out;
     }
     dev->entry.buffptr=temp_ptr;
     memcpy((void *)(dev->entry.buffptr+dev->entry.size),write_buffer,count);
     dev->entry.size+=count;
-    retval=count;
-    }
     
+    }
+    retval=count;
 unlock_out:
     mutex_unlock(&dev->lock);
 free_out:
@@ -231,7 +239,7 @@ int aesd_init_module(void)
 
 void aesd_cleanup_module(void)
 {
-int index=0;
+uint8_t index=0;
     struct aesd_buffer_entry *entry;
     dev_t devno = MKDEV(aesd_major, aesd_minor);
 
