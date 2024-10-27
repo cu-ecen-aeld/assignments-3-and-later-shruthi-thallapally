@@ -20,7 +20,7 @@
 #include <linux/slab.h>    // for kmalloc and kfree
 #include <linux/uaccess.h> // for copy_to_user and copy_from_user
 #include <linux/mutex.h>
-#include <stdint.h>
+
 
 #include "aesdchar.h"
 #include "aesd-circular-buffer.c"
@@ -237,7 +237,7 @@ void aesd_cleanup_module(void)
     dev_t devno = MKDEV(aesd_major, aesd_minor);
 
     cdev_del(&aesd_device.cdev);
-    uint8_t index=0;
+    int index=0;
     struct aesd_buffer_entry *entry;
     AESD_CIRCULAR_BUFFER_FOREACH(entry, &aesd_device.buffer, index)
     {
