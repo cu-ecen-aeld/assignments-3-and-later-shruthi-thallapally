@@ -394,7 +394,7 @@ int main(int argc, char **argv)
         exit(1);
     }
     
-    data_fd = open(FILE_NAME,  O_RDWR |O_CREAT | O_TRUNC,0666);
+    data_fd = open(FILE_NAME,  O_RDWR  | O_TRUNC,0666);
     if(data_fd ==-1)
     {
     	syslog(LOG_ERR," file failed to open");
@@ -442,7 +442,7 @@ int main(int argc, char **argv)
     	}
     	thread_args->fd=fd;
     	thread_args->addr=client_addr;
-   #if USE_AESD_CHAR_DEVICE
+#if USE_AESD_CHAR_DEVICE
     	
     	thread_args->data_fd=open(FILE_NAME, O_RDWR);
     	 if (thread_args->data_fd == -1)
@@ -486,12 +486,12 @@ int main(int argc, char **argv)
     {
     	syslog(LOG_INFO,"data socket closed");
     }
-  #if !USE_AESD_CHAR_DEVICE    
-    if(pthread_join(timer_thread, NULL) != 0)
+#if !USE_AESD_CHAR_DEVICE    
+    if(pthread_join(timestamp_thread, NULL) != 0)
     {
         syslog(LOG_ERR,"timer thread join failed:%s",strerror(errno));
     }
- #endif
+#endif
      freeaddrinfo(res);
      close(data_fd);
      closelog();
