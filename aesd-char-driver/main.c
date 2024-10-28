@@ -23,7 +23,7 @@
 
 
 #include "aesdchar.h"
-#include "aesd-circular-buffer.c"
+
 
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;

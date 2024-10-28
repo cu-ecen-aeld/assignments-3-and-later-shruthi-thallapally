@@ -26,6 +26,14 @@
 #define PORT_NUM (9000)
 #define BACKLOG (10)
 #define BUFFER_SIZE (1024)
+/* Build switch */
+#define USE_AESD_CHAR_DEVICE (1)
+
+#if (USE_AESD_CHAR_DEVICE == 1)
+    #define FILE_NAME "/dev/aesdchar"
+#elif (USE_AESD_CHAR_DEVICE == 0)
+	#define FILE_NAME "/var/tmp/aesdsocketdata"
+#endif
 
 typedef struct thread_node
 {
@@ -50,7 +58,7 @@ struct addrinfo *res;
 bool caught_sig=false;
 
 //FILE *temp_file=NULL;
-
+#if !USE_AESD_CHAR_DEVICE
 void *time_stamp(void *ptr)
 {
 	while(!caught_sig)
@@ -69,6 +77,7 @@ void *time_stamp(void *ptr)
 	
 			
 }
+#endif
 // Function to add a new thread node to the list
 void add_new_thread_node(pthread_t thread_id)
 {
@@ -313,26 +322,6 @@ void *thread_function(void *arg)
   //  pthread_exit(NULL);
 }
 
-// Function to clean up any completed threads
-void clean_up_completed_threads()
-{
-    pthread_mutex_lock(&thread_list_mutex);
-    thread_node *current = SLIST_FIRST(&thread_head);
-    thread_node *next_node;
-
-    while (current != NULL)
-    {
-        next_node = SLIST_NEXT(current, entry);
-        if (pthread_tryjoin_np(current->thread_id, NULL) == 0) // Try to join without blocking
-        {
-            syslog(LOG_INFO, "Thread %ld joined successfully", current->thread_id);
-            SLIST_REMOVE(&thread_head, current, thread_node, entry);
-            free(current);
-        }
-        current = next_node;
-    }
-    pthread_mutex_unlock(&thread_list_mutex);
-}
 
 int main(int argc, char **argv)
 {
@@ -352,7 +341,7 @@ int main(int argc, char **argv)
     
     memset(&hints,0,sizeof(hints)); //empty the struct
     hints.ai_flags=AI_PASSIVE;
-    hints.ai_family=AF_INET;
+    hints.ai_family=AF_UNSPEC;
     hints.ai_socktype=SOCK_STREAM;
     
     if((flag=getaddrinfo(NULL,"9000",&hints,&res))!=0)
@@ -405,10 +394,10 @@ int main(int argc, char **argv)
         exit(1);
     }
     
-    data_fd = open("/dev/aesdchar",  O_RDWR |O_CREAT | O_TRUNC,0666);
+    data_fd = open(FILE_NAME,  O_RDWR |O_CREAT | O_TRUNC,0666);
     if(data_fd ==-1)
     {
-    	syslog(LOG_ERR,"/dev/aesdchar file failed to open");
+    	syslog(LOG_ERR," file failed to open");
     	closelog();
         freeaddrinfo(res);
     	exit(1);
@@ -416,7 +405,7 @@ int main(int argc, char **argv)
     
     init_sigaction();
     addr_len=sizeof(client_addr);
-    
+   #if !USE_AESD_CHAR_DEVICE 
     //create timestamp thread
     pthread_t timestamp_thread;
     threadArgs *timer_thread_args=(threadArgs *)malloc(sizeof(threadArgs));
@@ -433,6 +422,7 @@ int main(int argc, char **argv)
     		free(timer_thread_args);
     	}
     }
+    #endif
     while (!caught_sig)
     {
         
@@ -451,8 +441,22 @@ int main(int argc, char **argv)
     		continue;
     	}
     	thread_args->fd=fd;
-    	thread_args->data_fd=data_fd;
     	thread_args->addr=client_addr;
+   #if USE_AESD_CHAR_DEVICE
+    	
+    	thread_args->data_fd=open(FILE_NAME, O_RDWR);
+    	 if (thread_args->data_fd == -1)
+        {
+            syslog(LOG_ERR, "Failed to open %s", FILE_NAME);
+            close(fd);
+            free(thread_args);
+            continue;
+        }
+#else
+        // Use already opened file descriptor
+        thread_args->data_fd = data_fd;
+#endif
+    	
     	if(pthread_create(&thread_id,NULL,thread_function,(void *)thread_args) !=0)
     	{
     		syslog(LOG_ERR,"failed to create timer thread");
@@ -461,7 +465,7 @@ int main(int argc, char **argv)
     		continue;
     	}
     	add_new_thread_node(thread_id);
-    	 clean_up_completed_threads();
+    	wait_for_all_threads_to_join();
         
      }
      wait_for_all_threads_to_join();
@@ -482,11 +486,12 @@ int main(int argc, char **argv)
     {
     	syslog(LOG_INFO,"data socket closed");
     }
-    
+  #if !USE_AESD_CHAR_DEVICE    
     if(pthread_join(timer_thread, NULL) != 0)
     {
         syslog(LOG_ERR,"timer thread join failed:%s",strerror(errno));
     }
+ #endif
      freeaddrinfo(res);
      close(data_fd);
      closelog();
