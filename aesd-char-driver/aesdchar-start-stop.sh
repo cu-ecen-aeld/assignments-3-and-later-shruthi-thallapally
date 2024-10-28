@@ -2,17 +2,17 @@
 
 case "$1" in
   start)
-    echo "Starting aesdchar"
+    echo "Loading aesdchar"
     aesdchar_load
     ;;
   stop)
-    echo "Stopping aesdchar"
+    echo "Unloading aesdchar"
     aesdchar_unload
     ;;
   *)
     echo "Usage: $0 [start|stop]"
     exit 1
-    ;;
+    
 esac
 
 exit 0

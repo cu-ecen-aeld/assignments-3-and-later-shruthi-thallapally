@@ -37,18 +37,16 @@ int aesd_open(struct inode *inode, struct file *filp)
 {
     
    
-    struct aesd_dev *dev = container_of(inode->i_cdev, struct aesd_dev, cdev);
+    
     PDEBUG("open");
-    filp->private_data = dev; // Store device pointer in file’s private data
+    filp->private_data = container_of(inode->i_cdev, struct aesd_dev, cdev); 
     return 0;
 }
 
 int aesd_release(struct inode *inode, struct file *filp)
 {
     PDEBUG("release");
-    /**
-     * TODO: handle release
-     */
+    
       filp->private_data =NULL;
     return 0;
 }
@@ -58,13 +56,12 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 {
     ssize_t retval = 0;
      struct aesd_dev *dev ;
-    struct aesd_buffer_entry *entry;
+    struct aesd_buffer_entry *temp;
     size_t entry_offset = 0;
     size_t bytes_to_read;
     if (filp == NULL || buf == NULL || f_pos == NULL || *f_pos < 0)
     {
-        retval=-EINVAL;
-        goto out;
+        return -EINVAL;
     }
     
      dev= filp->private_data;
@@ -72,21 +69,19 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     
     if(mutex_lock_interruptible(&dev->lock)!=0)
     {
-    retval= -ERESTART;
-    goto out;
+    return -ERESTART;
+   
     }
    
-    /**
-     * TODO: handle read
-     */
-     entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->buffer, *f_pos, &entry_offset);
-    if (!entry) {
+   
+     temp = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->buffer, *f_pos, &entry_offset);
+    if (!temp) {
         retval = 0; // No more data to read
         goto unlock_out;
     }
     
-    bytes_to_read = min(count, entry->size - entry_offset);
-    if (copy_to_user(buf, entry->buffptr + entry_offset, bytes_to_read)) {
+    bytes_to_read = min(count, temp->size - entry_offset);
+    if (copy_to_user(buf, temp->buffptr + entry_offset, bytes_to_read)) {
         retval = -EFAULT;
         goto unlock_out;
     }
@@ -96,7 +91,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 
 unlock_out:
     mutex_unlock(&dev->lock);
-out:
+
     return retval;
 }
 
@@ -107,29 +102,29 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     struct aesd_dev *dev ; 
   //  struct aesd_buffer_entry *entry;
     char *write_buffer=NULL;
-    char *nwline_ptr=NULL;
+    const char *nwline_ptr=NULL;
     char *temp_ptr=NULL;
     const char *ret_ptr;
    size_t buff_size=0;
    PDEBUG("write %zu bytes with offset %lld",count,*f_pos); 
     if (filp == NULL || buf == NULL || f_pos == NULL || count <= 0 || *f_pos<0)
     {
-        retval = -EINVAL;
-        goto out;
+        return -EINVAL;
+       
     }
   
     dev= filp->private_data;
     if(dev == NULL)
     {
-    	retval= -EINVAL;
-    	goto out;
+    	return -EINVAL;
+    	
     }
    
     write_buffer = kmalloc(count, GFP_KERNEL); // Allocate memory for incoming data
     if (write_buffer==NULL)
     {
-     retval= -ENOMEM;
-     goto out;
+      return -ENOMEM;
+    
 	}
     if (copy_from_user(write_buffer, buf, count)) { // Copy data from user space
         
@@ -139,7 +134,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     nwline_ptr=memchr(write_buffer,'\n',count);
     buff_size = nwline_ptr ? nwline_ptr - write_buffer + 1 : 0;
 
-     if(mutex_lock_interruptible(&dev->lock))
+     if(mutex_lock_interruptible(&dev->lock)!=0)
     {
     	retval=-ERESTART;
     	goto free_out;
@@ -153,7 +148,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
      {
             PDEBUG("Error: Reallocation failed\n");
             retval = -ENOMEM;
-            goto unlock_out;
+            goto free_unlock_out;
            }
  	 memcpy((void *)(dev->entry.buffptr + dev->entry.size), write_buffer, buff_size);
         dev->entry.size += buff_size;
@@ -171,19 +166,19 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         if (dev->entry.buffptr == NULL) {
             PDEBUG("Error: Reallocation failed\n");
             retval = -ENOMEM;
-    	goto unlock_out;
+    	goto free_unlock_out;
     }
-    dev->entry.buffptr=temp_ptr;
+    
     memcpy((void *)(dev->entry.buffptr+dev->entry.size),write_buffer,count);
     dev->entry.size+=count;
     
     }
     retval=count;
-unlock_out:
+free_unlock_out:
     mutex_unlock(&dev->lock);
 free_out:
 	kfree(write_buffer);
-out:
+
     return retval;
 }
 struct file_operations aesd_fops = {
@@ -223,11 +218,9 @@ int aesd_init_module(void)
     }
     memset(&aesd_device,0,sizeof(struct aesd_dev));
 
-    /**
-     * TODO: initialize the AESD specific portion of the device
-     */
+       aesd_circular_buffer_init(&aesd_device.buffer);
      mutex_init(&aesd_device.lock);
-    aesd_circular_buffer_init(&aesd_device.buffer);
+
 
     result = aesd_setup_cdev(&aesd_device);
 

@@ -30,34 +30,34 @@
 struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct aesd_circular_buffer *buffer,
             size_t char_offset, size_t *entry_offset_byte_rtn )
 {
+ *entry_offset_byte_rtn = 0;
     size_t total_offset = 0;
-    size_t entry_size;
+    size_t entry_size=0;
+    int entries_visited=0;
     struct aesd_buffer_entry *entry;
-    if (buffer == NULL || entry_offset_byte_rtn == NULL) {
+    if (buffer->full==false &&(buffer->in_offs==buffer->out_offs)) {
         return NULL;
     }
     // Iterate over all the valid entries in the buffer
-    for (int i = 0; i < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; i++) {
-        int index = (buffer->out_offs + i) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+    for (int i = buffer->out_offs; entries_visited < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; 
+          entries_visited++,i=(i+1)%AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED) {
         
-        entry = &buffer->entry[index];
-        entry_size = entry->size;
+        
+        
+        entry_size = buffer->entry[i].size;
         
         // Check if char_offset is within the current entry
-        if (char_offset < total_offset + entry_size) {
+        if (entry_size <= char_offset  ) {
             // If found, calculate the offset within the entry
-            *entry_offset_byte_rtn = char_offset - total_offset;
-            return entry;
+            char_offset -=entry_size;
         }
-        
-        total_offset += entry_size;
-        
-        // Break out if we've wrapped around and are at the starting point
-        if (index == buffer->in_offs && !buffer->full) {
-            break;
+        else
+        {
+        	entry_offset_byte_rtn=char_offset;
+        	return &buffer->entry[i];
         }
-    }
-
+	}
+	*entry_offset_byte_rtn=(size_t)-1;
     // If we didn't find a matching entry, return NULL
     return NULL;
 }
