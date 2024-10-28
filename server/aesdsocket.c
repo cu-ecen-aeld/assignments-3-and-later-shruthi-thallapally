@@ -472,7 +472,7 @@ int main(int argc, char **argv)
             free(thread_args);
             continue;
         }
-#else
+#elif
         // Use already opened file descriptor
         thread_args->data_fd = data_fd;
 #endif
