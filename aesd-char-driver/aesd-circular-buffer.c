@@ -30,34 +30,34 @@
 struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct aesd_circular_buffer *buffer,
             size_t char_offset, size_t *entry_offset_byte_rtn )
 {
-    size_t total_offset = 0;
-    size_t entry_size;
-    struct aesd_buffer_entry *entry;
-    if (buffer == NULL || entry_offset_byte_rtn == NULL) {
+ *entry_offset_byte_rtn = 0;
+    
+    size_t entry_size=0;
+    int entries_visited=0;
+    
+    if (buffer->full==false &&(buffer->in_offs==buffer->out_offs)) {
         return NULL;
     }
     // Iterate over all the valid entries in the buffer
-    for (int i = 0; i < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; i++) {
-        int index = (buffer->out_offs + i) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+    for (int i = buffer->out_offs; entries_visited < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; 
+          entries_visited++,i=(i+1)%AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED) {
         
-        entry = &buffer->entry[index];
-        entry_size = entry->size;
+        
+        
+        entry_size = buffer->entry[i].size;
         
         // Check if char_offset is within the current entry
-        if (char_offset < total_offset + entry_size) {
+        if (entry_size <= char_offset  ) {
             // If found, calculate the offset within the entry
-            *entry_offset_byte_rtn = char_offset - total_offset;
-            return entry;
+            char_offset -=entry_size;
         }
-        
-        total_offset += entry_size;
-        
-        // Break out if we've wrapped around and are at the starting point
-        if (index == buffer->in_offs && !buffer->full) {
-            break;
+        else
+        {
+        	*entry_offset_byte_rtn=char_offset;
+        	return &buffer->entry[i];
         }
-    }
-
+	}
+	*entry_offset_byte_rtn=(size_t)-1;
     // If we didn't find a matching entry, return NULL
     return NULL;
 }
@@ -69,13 +69,17 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 * Any necessary locking must be handled by the caller
 * Any memory referenced in @param add_entry must be allocated by and/or must have a lifetime managed by the caller.
 */
-void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
+const char* aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
 {
+	const char *retval = NULL;
+
+
 	if (buffer == NULL || add_entry == NULL) {
-        	return;
+        	return retval;
     	}
     // Overwrite the oldest entry if the buffer is full
     if (buffer->full) {
+    	 retval = buffer->entry[buffer->out_offs].buffptr;
         buffer->out_offs = (buffer->out_offs + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
     }
 
@@ -86,11 +90,10 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const s
     buffer->in_offs = (buffer->in_offs + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
 
     // Check if we've wrapped around and set the full flag if necessary
-    if (buffer->in_offs == buffer->out_offs) {
+    if (buffer->in_offs == buffer->out_offs && buffer->full == false) {
         buffer->full = true;
-    } else {
-        buffer->full = false;
-    }
+    } 
+    return retval;
 }
 
 /**
