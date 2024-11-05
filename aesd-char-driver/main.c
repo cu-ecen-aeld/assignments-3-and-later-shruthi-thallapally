@@ -104,7 +104,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
   //  struct aesd_buffer_entry *entry;
     char *write_buffer=NULL;
     const char *nwline_ptr=NULL;
-    char *temp_ptr=NULL;
+   // char *temp_ptr=NULL;
     const char *ret_ptr;
    size_t buff_size=0;
    PDEBUG("write %zu bytes with offset %lld",count,*f_pos); 
@@ -192,7 +192,7 @@ loff_t aesd_llseek(struct file *filp,loff_t offset,int whence)
    switch(whence)
    {
    
-   	case SEEK_CUR;
+   	case SEEK_CUR:
    		retval=filp->f_pos+offset;
    		break;
    	case SEEK_SET:
@@ -204,11 +204,11 @@ loff_t aesd_llseek(struct file *filp,loff_t offset,int whence)
    			retval=-ERESTART;
    			goto out;
    		}
-   		for(i=dev->buffer_out_offs;i!=dev->buffer.in_offs;i = (i + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED)
+   		for(i=dev->buffer.out_offs;i!=dev->buffer.in_offs;i = (i + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED)
    		{
    		 len+=dev->buffer.entry[i].size;
    		}
-   		mutex_unlock(&dev->lock;
+   		mutex_unlock(&dev->lock);
    		retval=len+offset;
    		break;
    	default:
@@ -260,7 +260,7 @@ long aesd_unlocked_ioctl(struct file *filp,unsigned int cmd, unsigned long arg)
         	return -EINVAL;
     	}
     	// Acquire lock for safe access
-    	if (mutex_lock_interruptible(&device->buffer_lock) != 0) 
+    	if (mutex_lock_interruptible(&device->lock) != 0) 
     	{
         	printk(KERN_ERR "Failed to acquire mutex lock\n");
         	return -ERESTARTSYS;
@@ -273,8 +273,8 @@ long aesd_unlocked_ioctl(struct file *filp,unsigned int cmd, unsigned long arg)
         	accumulated_length += device->buffer.entry[i].size;
     	}
 	// Update the file position based on the accumulated length and offset
-    	file->f_pos = accumulated_length + seek_params.write_cmd_offset;
-    	mutex_unlock(&device->buffer_lock);
+    	filp->f_pos = accumulated_length + seek_params.write_cmd_offset;
+    	mutex_unlock(&device->lock);
 
     	printk(KERN_DEBUG "Seek operation successful: new file position is %lld\n", file->f_pos);
     	return result;

@@ -32,8 +32,8 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 {
  *entry_offset_byte_rtn = 0;
     
-    size_t entry_size=0;
-    int entries_visited=0;
+    size_t entry_size;
+    int entries_visited;
     
     if (buffer->full==false &&(buffer->in_offs==buffer->out_offs)) {
         return NULL;
