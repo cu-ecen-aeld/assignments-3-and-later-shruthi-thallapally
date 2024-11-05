@@ -276,7 +276,7 @@ long aesd_unlocked_ioctl(struct file *filp,unsigned int cmd, unsigned long arg)
     	filp->f_pos = accumulated_length + seek_params.write_cmd_offset;
     	mutex_unlock(&device->lock);
 
-    	printk(KERN_DEBUG "Seek operation successful: new file position is %lld\n", file->f_pos);
+    	printk(KERN_DEBUG "Seek operation successful: new file position is %lld\n", filp->f_pos);
     	return result;
 
 }
