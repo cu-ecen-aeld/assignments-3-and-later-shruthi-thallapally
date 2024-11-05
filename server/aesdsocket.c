@@ -254,7 +254,7 @@ int rx_socket_data(int fd,int data_fd)
 	size_t total_rx=0;
 	ssize_t rx_bytes;
 	char *buff=(char *)malloc(buff_size);
-	struct aesd_seekto c; 
+	struct aesd_seekto seek_to_pos; 
 	if(buff==NULL)
 	{
 		syslog(LOG_ERR,"malloc failed");
@@ -268,7 +268,7 @@ int rx_socket_data(int fd,int data_fd)
 		free(buff);
 		return -1;
 	}
-	else if (bytes_received == 0) 
+	else if (rx_bytes == 0) 
         {
             // No more data to read (client closed connection)
             break;
@@ -295,7 +295,7 @@ int rx_socket_data(int fd,int data_fd)
 		if(sscanf(buff+19,"%u,%u",&seek_to_pos.write_cmd,&seek_to_pos.write_cmd_offset)==2)
 		{
 			syslog(LOG_INFO, "Processing IOCTL seek command with cmd: %u, offset: %u", seek_to_pos.write_cmd, seek_to_pos.write_cmd_offset);
-			if(ioctl(data_fd,AESDCHAR_IOCSEEKTO,&seek_to_pos0==-1)
+			if(ioctl(data_fd,AESDCHAR_IOCSEEKTO,&seek_to_pos)==-1)
 			{
 				free(buff);
 				return -1;
