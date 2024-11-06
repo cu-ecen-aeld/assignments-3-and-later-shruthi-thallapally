@@ -23,6 +23,7 @@
 
 
 #include "aesdchar.h"
+#include "aesd_ioctl.h"
 
 
 int aesd_major =   0; // use dynamic major
@@ -103,7 +104,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
   //  struct aesd_buffer_entry *entry;
     char *write_buffer=NULL;
     const char *nwline_ptr=NULL;
-    char *temp_ptr=NULL;
+   // char *temp_ptr=NULL;
     const char *ret_ptr;
    size_t buff_size=0;
    PDEBUG("write %zu bytes with offset %lld",count,*f_pos); 
@@ -181,12 +182,112 @@ free_out:
 
     return retval;
 }
+
+loff_t aesd_llseek(struct file *filp,loff_t offset,int whence)
+{
+   int len=0,i;
+   loff_t retval;
+   struct aesd_dev *dev = filp->private_data;
+   
+   switch(whence)
+   {
+   
+   	case SEEK_CUR:
+   		retval=filp->f_pos+offset;
+   		break;
+   	case SEEK_SET:
+   		retval=filp->f_pos;
+   		break;
+   	case SEEK_END:
+   		if(mutex_lock_interruptible(&dev->lock)!=0)
+   		{
+   			retval=-ERESTART;
+   			goto out;
+   		}
+   		for(i=dev->buffer.out_offs;i!=dev->buffer.in_offs;i = (i + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED)
+   		{
+   		 len+=dev->buffer.entry[i].size;
+   		}
+   		mutex_unlock(&dev->lock);
+   		retval=len+offset;
+   		break;
+   	default:
+   		retval=-EINVAL;
+   		goto out;
+   	
+   		
+   }
+   if(retval<0)
+   {
+   	return -EINVAL;
+   }
+   filp->f_pos=retval;
+   out:
+   	return retval;
+}
+
+long aesd_unlocked_ioctl(struct file *filp,unsigned int cmd, unsigned long arg)
+{
+	struct aesd_dev *device = filp->private_data;
+	struct aesd_seekto seek_params;
+    	int accumulated_length = 0;
+    	long result = 0;
+    	// Validate command type
+    	if (cmd != AESDCHAR_IOCSEEKTO) 
+    	{
+        	printk(KERN_ERR "Invalid IOCTL command received\n");
+        	return -ENOTTY;
+    	}
+    	// Copy data from user space
+    	if (copy_from_user(&seek_params, (struct aesd_seekto __user *)arg, sizeof(seek_params)) != 0) 
+    	{
+        	printk(KERN_ERR "Failed to copy data from user\n");
+        	return -EFAULT;
+    	}
+    	 // Check if command index is within bounds
+    	if (seek_params.write_cmd >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED)
+    	{
+        	printk(KERN_ERR "Command index out of range\n");
+        	return -EINVAL;
+    	}
+    	// Calculate the actual position in the circular buffer
+    	seek_params.write_cmd = (seek_params.write_cmd + device->buffer.out_offs) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+
+    	// Check if offset is within the size of the specified entry
+    	if (seek_params.write_cmd_offset > device->buffer.entry[seek_params.write_cmd].size) 
+    	{
+        	printk(KERN_ERR "Offset exceeds entry size\n");
+        	return -EINVAL;
+    	}
+    	// Acquire lock for safe access
+    	if (mutex_lock_interruptible(&device->lock) != 0) 
+    	{
+        	printk(KERN_ERR "Failed to acquire mutex lock\n");
+        	return -ERESTARTSYS;
+    	}
+
+    	// Calculate the file position by adding up entry sizes up to the specified command
+    	for (int i = device->buffer.out_offs; i != seek_params.write_cmd;
+         i = (i + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED) 
+         {
+        	accumulated_length += device->buffer.entry[i].size;
+    	}
+	// Update the file position based on the accumulated length and offset
+    	filp->f_pos = accumulated_length + seek_params.write_cmd_offset;
+    	mutex_unlock(&device->lock);
+
+    	printk(KERN_DEBUG "Seek operation successful: new file position is %lld\n", filp->f_pos);
+    	return result;
+
+}
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
     .read =     aesd_read,
     .write =    aesd_write,
     .open =     aesd_open,
     .release =  aesd_release,
+    .llseek=aesd_llseek,
+    .unlocked_ioctl=aesd_unlocked_ioctl,
 };
 
 static int aesd_setup_cdev(struct aesd_dev *dev)

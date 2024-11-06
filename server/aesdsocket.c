@@ -19,6 +19,9 @@
 #include <time.h>
 #include <pthread.h>
 #include <sys/queue.h>
+#include "../aesd-char-driver/aesd_ioctl.h" 
+#include <sys/ioctl.h>
+
 
 
 #pragma GCC diagnostic warning "-Wunused-variable"
@@ -57,17 +60,19 @@ int sockfd,fd;
 struct addrinfo *res;
 bool caught_sig=false;
 
-//FILE *temp_file=NULL;
+
 #if !USE_AESD_CHAR_DEVICE
 void *time_stamp(void *ptr)
 {
 	char timestamp[100];
+	struct tm *time_info;
+	time_t now;
 	while(!caught_sig)
 	{
 		sleep(10); // Sleep for 10 seconds before appending the next timestamp
 		
-		time_t now=time(NULL);
-		struct tm *time_info=localtime(&now);
+		now=time(NULL);
+		time_info=localtime(&now);
 		if(strftime(timestamp,sizeof(timestamp),"timestamp:%Y-%m-%d %H:%M:%S\n", time_info)==0)
 		{
 		continue;
@@ -244,10 +249,12 @@ int send_to_client(int fd,int data_fd)
 }
 int rx_socket_data(int fd,int data_fd)
 {
-	size_t mul_factor=1;
+	
 	size_t buff_size = BUFFER_SIZE;
 	size_t total_rx=0;
+	ssize_t rx_bytes;
 	char *buff=(char *)malloc(buff_size);
+	struct aesd_seekto seek_to_pos; 
 	if(buff==NULL)
 	{
 		syslog(LOG_ERR,"malloc failed");
@@ -255,35 +262,52 @@ int rx_socket_data(int fd,int data_fd)
 	}
 	while(1)
 	{
-		ssize_t rx_bytes=recv(fd,buff+total_rx,buff_size-total_rx-1,0);
-		if(rx_bytes<=0)
+	rx_bytes = recv(fd, buff + total_rx, BUFFER_SIZE - total_rx - 1, 0);
+	if(rx_bytes<0)
+	{
+		free(buff);
+		return -1;
+	}
+	else if (rx_bytes == 0) 
+        {
+            // No more data to read (client closed connection)
+            break;
+        }
+        total_rx += rx_bytes;
+        buff[total_rx] = '\0';  // Null-terminate to mark end of string
+        if (strchr(buff, '\n') != NULL) break;  // Exit if newline found
+        if(total_rx>=buff_size-1)
+        {
+        	buff_size *=2;
+        	char *temp_buff=realloc(buff,buff_size);
+        	if(!temp_buff)
+        	{
+        		free(buff);
+        		return -1;
+        	}
+        	buff=temp_buff;
+        } 
+         
+	}
+	
+	if(strncmp(buff,"AESDCHAR_IOCSEEKTO:",19)==0)
+	{
+		if(sscanf(buff+19,"%u,%u",&seek_to_pos.write_cmd,&seek_to_pos.write_cmd_offset)==2)
 		{
-			if (rx_bytes == 0) {
-             			syslog(LOG_INFO, "Client closed connection");
-         		} else {
-             			syslog(LOG_ERR, "recv failed: %s", strerror(errno));
-         		}
-			break;
-		}
-		total_rx+=rx_bytes;
-		buff[total_rx]='\0';
-		
-		if(strchr(buff,'\n')!=NULL)
-		{
-			break;
-		}
-		
-		mul_factor<<=1;
-		size_t new_buff_size=mul_factor*BUFFER_SIZE;
-		char * new_buff=(char *)realloc(buff,new_buff_size);
-		if(new_buff==NULL)
-		{
-			syslog(LOG_ERR,"realloc failed");
+			syslog(LOG_INFO, "Processing IOCTL seek command with cmd: %u, offset: %u", seek_to_pos.write_cmd, seek_to_pos.write_cmd_offset);
+			if(ioctl(data_fd,AESDCHAR_IOCSEEKTO,&seek_to_pos)==-1)
+			{
+				free(buff);
+				return -1;
+			}
 			free(buff);
-			return -1;
+			return 0;
 		}
-		buff=new_buff;
-		buff_size=new_buff_size;
+		 else 
+        	{
+            		syslog(LOG_ERR, "Malformed IOCTL command; expected format 'AESDCHAR_IOCSEEKTO:<cmd>,<offset>'");
+        	}
+		
 	}
 	
 	pthread_mutex_lock(&file_mutex);
@@ -477,6 +501,7 @@ int main(int argc, char **argv)
     	thread_args->addr=client_addr;
 #if USE_AESD_CHAR_DEVICE
         thread_args->data_fd = open(FILE_NAME, O_RDWR);
+       
 #else
         thread_args->data_fd = data_fd;  // Use the same `data_fd` file descriptor if not using aesdchar
 #endif
@@ -518,6 +543,7 @@ int main(int argc, char **argv)
         syslog(LOG_ERR,"timer thread join failed:%s",strerror(errno));
     }
 #endif
+     unlink(FILE_NAME);
      freeaddrinfo(res);
   //   close(data_fd);
      closelog();
